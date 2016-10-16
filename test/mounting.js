@@ -1,5 +1,6 @@
 
 var request = require('supertest');
+var assert = require('assert');
 var mount = require('..');
 var koa = require('koa');
 
@@ -318,3 +319,46 @@ describe('mount(/prefix/)', function(){
     .expect(204, done);
   })
 })
+
+// 测试mount后的执行顺序,
+// 由于mount 使用了yield*
+// 因此当执行到mount时
+// 会讲mount中所有的yield执行完，再往下执行
+describe('mount(path, app) by order', function(){
+  it('should run by [2, 1, 4, 3]', function(done){
+    var app = koa();
+    var a = koa();
+    var arr = [];
+
+    // mount中的路由
+    a.use(function *(next){
+      arr.push(1);
+      yield next;
+    });
+
+    a.use(function *(next){
+      arr.push(4);
+      yield next;
+    });
+
+    // 挂载到app下的中间件
+    app.use(function *(next){
+      arr.push(2);
+      yield next;
+    });
+
+    app.use(mount('/a', a));
+    app.use(function *(next){
+      arr.push(3);
+      yield next;
+    });
+    var server = app.listen();
+
+    request(server)
+    .get('/a')
+    .end(function(err){
+      assert(arr, [2, 1, 4, 3]);
+      done();
+    });
+  });
+});
